@@ -435,17 +435,26 @@ def evaluate_writing_quality(total_errors, word_count, ttr):
     """
     error_rate = (total_errors / word_count * 100) if word_count else 0
 
-    if total_errors <= 2 and error_rate <= 10 and ttr >= 0.50:
+    # A simple diagnostic writing score.
+    # Errors reduce the score, while reasonable lexical variety gives a small bonus.
+    base_score = 100 - (error_rate * 1.2)
+    ttr_bonus = 5 if ttr >= 0.50 else 0
+    score = max(0, min(100, round(base_score + ttr_bonus)))
+
+    if score >= 85:
         label = "Excellent"
+        icon = "🏆"
         comment = "The writing is generally accurate and shows good lexical variety."
-    elif total_errors <= 5 and error_rate <= 25:
+    elif score >= 70:
         label = "Good"
+        icon = "👍"
         comment = "The writing is understandable, but some errors need revision."
     else:
         label = "Needs Improvement"
+        icon = "⚠️"
         comment = "The writing needs more careful revision, especially in accuracy and basic patterns."
 
-    return label, comment, error_rate
+    return label, icon, comment, error_rate, score
 
 # =========================================================
 # Streamlit app
@@ -524,22 +533,35 @@ if st.button("Analyze Writing"):
 
         st.metric("Total Detected Errors", len(all_errors))
 
-        quality_label, quality_comment, error_rate = evaluate_writing_quality(
+        quality_label, quality_icon, quality_comment, error_rate, writing_score = evaluate_writing_quality(
             total_errors=len(all_errors),
             word_count=word_count,
             ttr=ttr
         )
 
         st.subheader("3. Overall Writing Quality")
-        q_col1, q_col2 = st.columns([1, 3])
-        q_col1.metric("Quality Level", quality_label)
-        q_col2.info(
-            f"{quality_comment}\n\n"
-            f"Error Rate: {error_rate:.2f}%"
+        st.info(
+            f"### {quality_icon} Overall Quality: {quality_label}\n"
+            f"**Writing Score:** {writing_score} / 100  \n"
+            f"**Error Rate:** {error_rate:.2f}%  \n\n"
+            f"{quality_comment}"
         )
 
+        error_type_counts = {
+            "Spelling Errors": len(spelling_rows),
+            "Repeated-Letter Errors": len(repeated_rows),
+            "Capitalization Errors": len(capitalization_rows),
+            "Missing Punctuation Errors": len(punctuation_rows),
+            "Grammar Pattern Errors": len(grammar_rows),
+        }
+
+        st.subheader("4. Error Type Summary")
+        summary_cols = st.columns(5)
+        for col, (label, count) in zip(summary_cols, error_type_counts.items()):
+            col.metric(label, count)
+
         if show_corrected_text:
-            st.subheader("4. Corrected Text Preview")
+            st.subheader("5. Corrected Text Preview")
             corrected_text = make_corrected_text(text, spell)
             st.success(corrected_text)
 
@@ -550,7 +572,7 @@ if st.button("Analyze Writing"):
                 mime="text/plain"
             )
 
-        st.subheader("5. Error Analysis")
+        st.subheader("6. Error Analysis")
 
         if all_errors:
             error_df = pd.DataFrame(all_errors)
@@ -566,7 +588,7 @@ if st.button("Analyze Writing"):
         else:
             st.info("No selected error types were detected.")
 
-        st.subheader("6. Top 10 Frequent Words")
+        st.subheader("7. Top 10 Frequent Words")
         word_freq = Counter(lowered_words)
         freq_df = pd.DataFrame(word_freq.most_common(10), columns=["Word", "Frequency"])
         st.dataframe(freq_df, use_container_width=True)
@@ -579,7 +601,7 @@ if st.button("Analyze Writing"):
             mime="text/csv"
         )
 
-        st.subheader("7. Summary CSV")
+        st.subheader("8. Summary CSV")
         summary_df = pd.DataFrame([{
             "Word Count": word_count,
             "Sentence Count": sentence_count,
@@ -588,6 +610,7 @@ if st.button("Analyze Writing"):
             "Average Sentence Length": round(avg_sentence_length, 2),
             "Total Errors": len(all_errors),
             "Error Rate (%)": round(error_rate, 2),
+            "Writing Score": writing_score,
             "Overall Quality": quality_label,
             "Spelling Errors": len(spelling_rows),
             "Repeated-Letter Errors": len(repeated_rows),
