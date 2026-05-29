@@ -443,18 +443,62 @@ def evaluate_writing_quality(total_errors, word_count, ttr):
 
     if score >= 85:
         label = "Excellent"
-        icon = "🏆"
-        comment = "The writing is generally accurate and shows good lexical variety."
+        icon = "🌟"
+        comment = "Great work! Your writing is clear, accurate, and shows strong effort. Keep it up!"
     elif score >= 70:
         label = "Good"
-        icon = "👍"
-        comment = "The writing is understandable, but some errors need revision."
+        icon = "😊"
+        comment = "Nice job! Your writing is easy to understand. A little more revision will make it even better."
     else:
         label = "Needs Improvement"
-        icon = "⚠️"
-        comment = "The writing needs more careful revision, especially in accuracy and basic patterns."
+        icon = "💪"
+        comment = "You are doing well! Keep practicing step by step. Focus on the suggested corrections and your writing will improve."
 
     return label, icon, comment, error_rate, score
+
+
+# =========================================================
+# Group repeated error rows for cleaner display
+# =========================================================
+def group_error_rows(rows):
+    """
+    Merge repeated errors such as multiple lowercase 'i' errors.
+    This makes the result table easier to read.
+    """
+    if not rows:
+        return []
+
+    grouped = {}
+    for row in rows:
+        key = (
+            row.get("Error Type", ""),
+            row.get("Detected", ""),
+            row.get("Best Correction", ""),
+            row.get("Suggestions", ""),
+            row.get("Explanation", ""),
+        )
+
+        if key not in grouped:
+            grouped[key] = dict(row)
+            grouped[key]["Count"] = 1
+        else:
+            grouped[key]["Count"] += 1
+
+    result = list(grouped.values())
+
+    # Put Count near the front of the table
+    ordered = []
+    for row in result:
+        ordered.append({
+            "Error Type": row.get("Error Type", ""),
+            "Detected": row.get("Detected", ""),
+            "Best Correction": row.get("Best Correction", ""),
+            "Count": row.get("Count", 1),
+            "Suggestions": row.get("Suggestions", ""),
+            "Explanation": row.get("Explanation", ""),
+        })
+
+    return ordered
 
 # =========================================================
 # Streamlit app
@@ -521,7 +565,8 @@ if st.button("Analyze Writing"):
         punctuation_rows = detect_missing_punctuation(text) if check_missing_punctuation else []
         grammar_rows = detect_common_grammar_patterns(text) if check_grammar_patterns else []
 
-        all_errors = spelling_rows + repeated_rows + capitalization_rows + punctuation_rows + grammar_rows
+        all_errors_raw = spelling_rows + repeated_rows + capitalization_rows + punctuation_rows + grammar_rows
+        all_errors = group_error_rows(all_errors_raw)
 
         st.subheader("2. Writing Summary")
         col1, col2, col3, col4, col5 = st.columns(5)
@@ -531,10 +576,10 @@ if st.button("Analyze Writing"):
         col4.metric("TTR", f"{ttr:.3f}")
         col5.metric("Avg. Sentence Length", f"{avg_sentence_length:.2f}")
 
-        st.metric("Total Detected Errors", len(all_errors))
+        st.metric("Total Detected Errors", len(all_errors_raw))
 
         quality_label, quality_icon, quality_comment, error_rate, writing_score = evaluate_writing_quality(
-            total_errors=len(all_errors),
+            total_errors=len(all_errors_raw),
             word_count=word_count,
             ttr=ttr
         )
@@ -608,7 +653,7 @@ if st.button("Analyze Writing"):
             "Types": type_count,
             "TTR": round(ttr, 3),
             "Average Sentence Length": round(avg_sentence_length, 2),
-            "Total Errors": len(all_errors),
+            "Total Errors": len(all_errors_raw),
             "Error Rate (%)": round(error_rate, 2),
             "Writing Score": writing_score,
             "Overall Quality": quality_label,
